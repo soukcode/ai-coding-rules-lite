@@ -1,0 +1,33 @@
+---
+description: "Typescript Strictness review and implementation guidance"
+globs: "**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+# Typescript Strictness
+
+## NXT-unknown-boundary
+
+Parse unknown external input before using it as a domain type.
+
+Reason: A TypeScript assertion does not validate runtime data.
+
+```tsx
+// Bad
+const input = body as CreateItem;
+// Good: use the project’s installed schema validator
+const input = createItemSchema.parse(body);
+```
+
+## NXT-no-any
+
+Use unknown, narrowing or generics instead of adding any to bypass a type error.
+
+Reason: Escapes hide contracts rather than fixing them.
+
+## NXT-strict-baseline
+
+Preserve strict compiler options and fix new type errors.
+
+Reason: Disabling strictness weakens unrelated parts of the project.
+
