@@ -1,0 +1,32 @@
+[
+  {
+    "id": "NXT-server-authz",
+    "file": ".cursor/rules/auth-and-security.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "NXT-server-secrets",
+    "file": ".cursor/rules/auth-and-security.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "NXT-csrf-boundary",
+    "file": ".cursor/rules/auth-and-security.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "NXT-unknown-boundary",
+    "file": ".cursor/rules/typescript-strictness.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "NXT-no-any",
+    "file": ".cursor/rules/typescript-strictness.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "NXT-strict-baseline",
+    "file": ".cursor/rules/typescript-strictness.mdc",
+    "conflicts": []
+  }
+]
