@@ -1,0 +1,11 @@
+---
+description: "Fixture validation rule"
+globs: "app/**/*.php"
+alwaysApply: false
+---
+
+## LAR-fixture-input
+
+Validate input before using it.
+
+Reason: HTTP input is untrusted.
