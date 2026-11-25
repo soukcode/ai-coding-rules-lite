@@ -1,0 +1,32 @@
+---
+description: "Auth And Security review and implementation guidance"
+globs: "**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+# Auth And Security
+
+## NXT-server-authz
+
+Check session identity and resource ownership at the data mutation boundary.
+
+Reason: Middleware or hidden controls are not a complete authorization boundary.
+
+## NXT-server-secrets
+
+Keep secrets in server-only modules and never prefix them NEXT_PUBLIC_.
+
+Reason: Public environment values are bundled for the browser.
+
+```tsx
+// Bad
+const secret = process.env.NEXT_PUBLIC_SERVICE_SECRET;
+// Good: read private secrets only in a server-only module.
+```
+
+## NXT-csrf-boundary
+
+Review CSRF and origin checks for cookie-authenticated mutation endpoints.
+
+Reason: Route handlers do not automatically inherit Server Action protections; webhooks need signature checks.
+
