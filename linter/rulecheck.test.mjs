@@ -1,0 +1,50 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';import {parseFrontmatter,globRegex,detectStack,validate,initProject,packRoot} from './rulecheck.mjs';
+const cli=path.join(packRoot,'linter/rulecheck.mjs');
+function tmp(t){let p=fs.mkdtempSync(path.join(os.tmpdir(),'rulecheck-'));t.after(()=>fs.rmSync(p,{recursive:true,force:true}));return p}
+function put(root,p,s){fs.mkdirSync(path.dirname(path.join(root,p)),{recursive:true});fs.writeFileSync(path.join(root,p),s)}
+const good='---\ndescription: "Safe guidance"\nglobs: "app/**/*.php"\nalwaysApply: false\n---\n\n## LAR-example\n\nValidate input.\n\nReason: Input is untrusted.\n';
+function fixture(t){const r=tmp(t);put(r,'composer.json',JSON.stringify({require:{'laravel/framework':'^12.0'}}));put(r,'CLAUDE.md','# Instructions');put(r,'AGENTS.md','# Instructions');put(r,'app/Models/User.php','<?php');put(r,'.cursor/rules/example.mdc',good);return r}
+const has=(r,code)=>r.issues.some(i=>i.code===code);
+for(const [label,text,ok] of [['flat',good,true],['crlf',good.replaceAll('\n','\r\n'),true],['bom','\uFEFF'+good,true],['single quote',good.replace('"Safe guidance"',"'Safe guidance'"),true],['bare',good.replace('"Safe guidance"','Safe guidance'),true],['no open',good.slice(4),false],['no close','---\ndescription: x',false],['duplicate key',good.replace('description:', 'alwaysApply: true\ndescription:'),false],['bad quote',good.replace('"Safe guidance"','"oops'),false],['array',good.replace('"app/**/*.php"','[app/*.php]'),false],['block scalar',good.replace('"Safe guidance"','|'),false],['invalid line',good.replace('description:', 'description'),false]])test('frontmatter '+label,()=>{if(ok)assert(parseFrontmatter(text).body.includes('LAR-example'));else assert.throws(()=>parseFrontmatter(text))});
+for(const [pattern,file,expected] of [['**/*.ts','a.ts',true],['**/*.ts','src/a.ts',true],['*.ts','src/a.ts',false],['app/**/*.php','app/User.php',true],['app/**/*.php','app/Models/User.php',true],['app/*.php','app/Models/User.php',false],['src/**','src/a/b.ts',true],['file?.ts','file1.ts',true],['file?.ts','file12.ts',false],['*.tsx','a.ts',false],['a.b','axb',false],['a.b','a.b',true]])test('glob '+pattern+' '+file,()=>assert.equal(globRegex(pattern).test(file),expected));
+for(const g of ['../x','/tmp/x','a\\b','{a,b}/*.ts','[ab].ts','!a.ts',''])test('unsafe glob '+g,()=>assert.throws(()=>globRegex(g)));
+test('valid fixture',t=>assert.equal(validate(fixture(t)).errors,0));
+test('unknown stack',t=>assert(has(validate(tmp(t)),'UNKNOWN_STACK')));
+test('wrong requested stack',t=>assert(has(validate(fixture(t),{stack:'nextjs-ts'}),'WRONG_STACK')));
+test('unknown explicit stack',t=>assert(has(validate(fixture(t),{stack:'ruby'}),'STACK')));
+test('empty wrapper',t=>{let r=fixture(t);put(r,'CLAUDE.md',' ');assert(has(validate(r),'EMPTY_FILE'))});
+test('missing wrapper',t=>{let r=fixture(t);fs.unlinkSync(path.join(r,'AGENTS.md'));assert(has(validate(r),'MISSING_WRAPPER'))});
+test('no rules',t=>{let r=fixture(t);fs.rmSync(path.join(r,'.cursor'),{recursive:true});assert(has(validate(r),'NO_RULES'))});
+test('broken frontmatter fixture',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc','broken');assert(has(validate(r),'FRONTMATTER'))});
+for(const [name,from,to,code] of [['description','description: "Safe guidance"','description: ""','DESCRIPTION'],['globs','globs: "app/**/*.php"','globs: ""','GLOBS'],['boolean','alwaysApply: false','alwaysApply: "false"','ALWAYS_APPLY'],['id','## LAR-example','## no id','NO_IDS'],['wrong stack id','LAR-example','NXT-example','WRONG_RULE_STACK']])test('invalid '+name,t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good.replace(from,to));assert(has(validate(r),code))});
+test('empty body',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good.split('##')[0]);assert(has(validate(r),'EMPTY_RULE'))});
+test('unmatched warning',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good.replace('app/**/*.php','missing/**/*.php'));let v=validate(r);assert(has(v,'UNMATCHED_GLOB'));assert.equal(v.errors,0)});
+test('strict unmatched error',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good.replace('app/**/*.php','missing/**/*.php'));assert(validate(r,{strictGlobs:true}).errors>0)});
+test('duplicate ids',t=>{let r=fixture(t);put(r,'.cursor/rules/second.mdc',good);assert(has(validate(r),'DUPLICATE_ID'))});
+test('explicit conflicts',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good+'\n<!-- rulecheck: external-writes=allow -->\n<!-- rulecheck: external-writes=deny -->\n');assert(has(validate(r),'CONTRADICTION'))});
+test('dead reference',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good+'\nRead [guide](missing.md).');assert(has(validate(r),'DEAD_REFERENCE'))});
+test('live reference',t=>{let r=fixture(t);put(r,'guide.md','guide');put(r,'.cursor/rules/example.mdc',good+'\nRead [guide](guide.md).');assert(!has(validate(r),'DEAD_REFERENCE'))});
+test('external reference ignored',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good+'\n[docs](https://example.com)');assert(!has(validate(r),'DEAD_REFERENCE'))});
+test('reference traversal',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good+'\n[x](../../secret.md)');assert(has(validate(r),'UNSAFE_REFERENCE'))});
+test('at reference',t=>{let r=fixture(t);put(r,'.cursor/rules/example.mdc',good+'\nRead @absent.md');assert(has(validate(r),'DEAD_REFERENCE'))});
+test('size warning',t=>assert(has(validate(fixture(t),{maxBytes:5}),'SIZE')));
+test('malformed manifest',t=>{let r=fixture(t);put(r,'composer.json','{');assert(has(validate(r),'MANIFEST'))});
+test('next stack',t=>{let r=tmp(t);put(r,'package.json','{"dependencies":{"next":"^16"}}');assert.deepEqual(detectStack(r),['nextjs-ts'])});
+test('both stacks',t=>{let r=fixture(t);put(r,'package.json','{"dependencies":{"next":"^16"}}');assert.deepEqual(detectStack(r),['laravel','nextjs-ts'])});
+test('plain composer is not Laravel',t=>{let r=tmp(t);put(r,'composer.json','{}');assert.deepEqual(detectStack(r),[])});
+test('registry malformed',t=>{let r=fixture(t);put(r,'rule-ids.json','{}');assert(has(validate(r),'REGISTRY'))});
+test('registry missing id',t=>{let r=fixture(t);put(r,'rule-ids.json','[{"id":"LAR-absent","file":"x","conflicts":[]}]');assert(has(validate(r),'REGISTRY_MISSING'));assert(has(validate(r),'UNREGISTERED'))});
+test('init dry run leaves project alone',t=>{let r=fixture(t);fs.rmSync(path.join(r,'.cursor'),{recursive:true});let v=initProject(r);assert(v.dryRun);assert(!fs.existsSync(path.join(r,'.cursor')))});
+test('init copies appropriate stack',t=>{let r=tmp(t);put(r,'package.json','{"dependencies":{"next":"^16"}}');let v=initProject(r,{write:true});assert.equal(v.stack,'nextjs-ts');assert(fs.existsSync(path.join(r,'AGENTS.md')))});
+test('init never overwrites',t=>{let r=fixture(t);initProject(r,{write:true});assert.equal(fs.readFileSync(path.join(r,'AGENTS.md'),'utf8'),'# Instructions')});
+test('init unknown rejected',t=>assert.throws(()=>initProject(tmp(t))));
+test('init stack conflict rejected',t=>assert.throws(()=>initProject(fixture(t),{stack:'nextjs-ts'})));
+test('init unknown tool rejected',t=>assert.throws(()=>initProject(fixture(t),{tool:'nope'})));
+test('init symlink parent blocked',t=>{let r=tmp(t),outside=tmp(t);put(r,'composer.json','{"require":{"laravel/framework":"^12"}}');fs.symlinkSync(outside,path.join(r,'.cursor'));assert(initProject(r,{write:true}).actions.some(a=>a.status==='blocked-unsafe-parent'));assert.equal(fs.readdirSync(outside).length,0)});
+for(const tool of ['claude','cursor','codex'])test('single tool '+tool,t=>{let r=tmp(t);put(r,'composer.json','{"require":{"laravel/framework":"^12"}}');let v=initProject(r,{tool,write:true});assert(v.actions.length>0);if(tool==='claude')assert(!fs.existsSync(path.join(r,'AGENTS.md')))});
+for(const stack of ['laravel','nextjs-ts'])test('bundled '+stack,()=>{let v=validate(path.join(packRoot,stack),{stack});assert.equal(v.errors,0,JSON.stringify(v.issues))});
+for(const [label,args,expected] of [['help',['--help'],0],['bad option',['--wat'],2],['write requires init',['--write'],2],['bad budget',['--max-bytes','x'],2],['missing path',['/not-a-real-rulecheck-path'],2]])test('CLI '+label,()=>assert.equal(spawnSync(process.execPath,[cli,...args],{encoding:'utf8'}).status,expected));
+test('CLI valid JSON',t=>{let r=fixture(t);let v=spawnSync(process.execPath,[cli,r,'--json'],{encoding:'utf8'});assert.equal(v.status,0);assert.equal(JSON.parse(v.stdout).ok,true)});
+test('CLI errors exit 1',t=>{let r=fixture(t);put(r,'AGENTS.md','');assert.equal(spawnSync(process.execPath,[cli,r],{encoding:'utf8'}).status,1)});
+
+for(const flag of ["--stack","--tool","--max-bytes"])test("CLI missing value "+flag,()=>assert.equal(spawnSync(process.execPath,[cli,flag],{encoding:"utf8"}).status,2));
