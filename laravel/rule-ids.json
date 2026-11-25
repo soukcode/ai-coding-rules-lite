@@ -1,0 +1,32 @@
+[
+  {
+    "id": "LAR-mass-assignment",
+    "file": ".cursor/rules/security.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "LAR-uploads",
+    "file": ".cursor/rules/security.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "LAR-csrf-secrets",
+    "file": ".cursor/rules/security.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "LAR-behavior-tests",
+    "file": ".cursor/rules/testing.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "LAR-test-style",
+    "file": ".cursor/rules/testing.mdc",
+    "conflicts": []
+  },
+  {
+    "id": "LAR-factory-isolation",
+    "file": ".cursor/rules/testing.mdc",
+    "conflicts": []
+  }
+]
