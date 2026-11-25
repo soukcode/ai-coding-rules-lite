@@ -1,0 +1,26 @@
+---
+description: "Testing review and implementation guidance"
+globs: "tests/**/*.php"
+alwaysApply: false
+---
+
+# Testing
+
+## LAR-behavior-tests
+
+Cover successful, invalid and forbidden paths with feature tests.
+
+Reason: A happy path alone misses validation and authorization regressions.
+
+## LAR-test-style
+
+Use the project’s installed Pest or PHPUnit conventions.
+
+Reason: Introducing a second runner or unsupported assertion breaks verification.
+
+## LAR-factory-isolation
+
+Create test state with factories and an isolated test database.
+
+Reason: Tests must not depend on production data or execution order.
+
